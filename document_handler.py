@@ -256,6 +256,9 @@ class DocumentHandler:
             company_name = tax_data.get('company_name', '')
             tax_number = tax_data.get('tax_number', '')
             
+            # Ücret tutarını TL ile birlikte formatla
+            tutar_with_tl = ucret_bilgisi['tutar'] + ' TL'
+            
             # Metni değiştir
             for para in doc.paragraphs:
                 # 1. ... (....) → Firma adı (Vergi No)
@@ -268,15 +271,20 @@ class DocumentHandler:
                     para.text = para.text.replace('... hazırlanması', f'{proje_turu.upper()} hazırlanması')
                     print(f"✓ Proje türü yerleştirildi: {proje_turu.upper()}")
                 
-                # 3. ... TL projenin → Ücret tutarı
+                # 3. ... TL projenin → Ücret tutarı (TL ile birlikte)
                 if '... TL projenin' in para.text:
-                    para.text = para.text.replace('... TL projenin', f"{ucret_bilgisi['tutar']} projenin")
-                    print(f"✓ Ücret tutarı yerleştirildi: {ucret_bilgisi['tutar']}")
+                    para.text = para.text.replace('... TL projenin', f"{tutar_with_tl} projenin")
+                    print(f"✓ Ücret tutarı yerleştirildi: {tutar_with_tl}")
                 
                 # 4. ... talep edilir → Ücret açıklaması
                 if '... talep edilir' in para.text:
                     para.text = para.text.replace('... talep edilir', f"{ucret_bilgisi['aciklama']} talep edilir")
                     print(f"✓ Ücret açıklaması yerleştirildi: {ucret_bilgisi['aciklama']}")
+                
+                # 5. Sabit tutarın ... TL'si → Sabit tutarın 100.000 TL'si
+                if 'Sabit tutarın ... TL' in para.text:
+                    para.text = para.text.replace('Sabit tutarın ... TL', f"Sabit tutarın {tutar_with_tl}")
+                    print(f"✓ Sabit tutar yerleştirildi: {tutar_with_tl}")
             
             # Çıktı dosyasını kaydet
             if not output_path:

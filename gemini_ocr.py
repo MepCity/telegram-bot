@@ -96,8 +96,6 @@ CEVABI SADECE JSON formatında ver, başka açıklama ekleme:
                 'address': ''
             }
     
-    return result
-    
     def extract_tax_info_from_pdf(self, pdf_path):
         """
         PDF'den vergi levhası bilgilerini çıkar (Gemini Vision)

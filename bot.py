@@ -22,11 +22,11 @@ from gemini_ocr import GeminiOCR
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Conversation states - Manuel giriş için yeni state'ler eklendi
+# Conversation states - Manuel giriş ve sözleşme için state'ler
 (ASK_TAX_PDF, ASK_TAX_NUMBER, ASK_CONTACT_PERSON, ASK_OFFER_DATE, ASK_MANUAL_DATE, 
  ASK_EMAIL, ASK_SERVICE_NAME, ASK_QUANTITY, ASK_UNIT_PRICE, ASK_ADD_MORE,
  ASK_MANUAL_ENTRY, ASK_MANUAL_COMPANY, ASK_MANUAL_TAX_OFFICE, ASK_MANUAL_TAX_NUMBER, ASK_MANUAL_ADDRESS,
- ASK_NOTES_CHOICE, ASK_NOTES_TEXT) = range(17)
+ ASK_NOTES_CHOICE, ASK_NOTES_TEXT, ASK_PROJECT_TYPE, ASK_CONTRACT_AMOUNT) = range(19)
 
 class OfferBot:
     def __init__(self):
@@ -435,16 +435,136 @@ class OfferBot:
         else:
             # Not istemiyorsa boş not ile devam et
             context.user_data['notes'] = ''
+            # Not istenmediği için sözleşme sorusunu atla, direkt oluştura geç
             await update.message.reply_text(config.MESSAGES['processing'], reply_markup=ReplyKeyboardRemove(), parse_mode='Markdown')
-            return await self.generate_offer(update, context)
+            
+            # Sözleşme oluşturulsun mu kontrol et
+            return await self.ask_project_type(update, context)
     
     async def receive_notes_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Kullanıcının yazdığı notu kaydet"""
         notes_text = update.message.text.strip()
         context.user_data['notes'] = notes_text
         await update.message.reply_text(f"✅ Not eklendi:\n\n{notes_text}")
-        await update.message.reply_text(config.MESSAGES['processing'], parse_mode='Markdown')
-        return await self.generate_offer(update, context)
+        
+        # Not eklendikten sonra sözleşme bilgilerini sor
+        return await self.ask_project_type(update, context)
+    
+    async def ask_project_type(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Sözleşme için proje türünü sor"""
+        await update.message.reply_text(
+            "📋 *4. Belge: Sözleşme*\n\n"
+            "Proje türünü yazın:\n"
+            "(Örnek: TÜBİTAK 1501 PROJESİ, KOSGEB PROJE DANIŞMANLIĞI, vb.)\n\n"
+            "ℹ️ Sözleşmede büyük harfle yazılacak.",
+            parse_mode='Markdown'
+        )
+        return ASK_PROJECT_TYPE
+    
+    async def receive_project_type(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Proje türünü kaydet ve sözleşme bedelini sor"""
+        proje_turu = update.message.text.strip()
+        context.user_data['proje_turu'] = proje_turu
+        
+        await update.message.reply_text(
+            f"✅ Proje türü: {proje_turu.upper()}\n\n"
+            "💰 Sözleşme bedelini yazın:\n\n"
+            "Örnekler:\n"
+            "• 80.000 TL'nin %5'i\n"
+            "• 50000 TL nin %10 u\n"
+            "• 5.000 TL\n"
+            "• 10000\n\n"
+            "ℹ️ Hem sabit tutar hem de yüzde hesaplamaları desteklenir.",
+            parse_mode='Markdown'
+        )
+        return ASK_CONTRACT_AMOUNT
+    
+    async def receive_contract_amount(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Sözleşme bedelini al ve parse et"""
+        user_input = update.message.text.strip()
+        
+        try:
+            # Ücret bilgilerini parse et
+            ucret_bilgisi = self.parse_contract_amount(user_input)
+            context.user_data['ucret_bilgisi'] = ucret_bilgisi
+            
+            await update.message.reply_text(
+                f"✅ Sözleşme bedeli kaydedildi:\n"
+                f"• Tutar: {ucret_bilgisi['tutar']}\n"
+                f"• Açıklama: {ucret_bilgisi['aciklama']}\n\n"
+                "📄 Sözleşme hazırlanıyor...",
+                parse_mode='Markdown'
+            )
+            
+            # Sözleşmeyi oluştur
+            return await self.generate_offer(update, context)
+            
+        except Exception as e:
+            await update.message.reply_text(
+                f"❌ Hata: {e}\n\n"
+                "Lütfen formatı kontrol edip tekrar deneyin.\n\n"
+                "Örnekler:\n"
+                "• 80.000 TL'nin %5'i\n"
+                "• 5.000 TL",
+                parse_mode='Markdown'
+            )
+            return ASK_CONTRACT_AMOUNT
+    
+    def parse_contract_amount(self, user_input):
+        """
+        Kullanıcı girdisinden sözleşme bedeli bilgisini parse eder.
+        
+        Örnekler:
+        - "80.000 TL'nin %5'i" → {'tutar': '80.000', 'aciklama': "%5'i"}
+        - "50000 TL nin %10 u" → {'tutar': '50.000', 'aciklama': '%10'u'}
+        - "5.000 TL" → {'tutar': '5.000', 'aciklama': 'sabit tutar'}
+        - "10000" → {'tutar': '10.000', 'aciklama': 'sabit tutar'}
+        """
+        import re
+        
+        # Normalize et (Türkçe karakterleri koru)
+        text = user_input.strip()
+        
+        # Pattern 1: "80.000 TL'nin %5'i" formatı
+        pattern1 = r"([\d.,]+)\s*TL['\']?\s*n[iıİI]n?\s*(%\d+)['\']?[iıİI]?"
+        match = re.search(pattern1, text, re.IGNORECASE)
+        
+        if match:
+            tutar_str = match.group(1).replace('.', '').replace(',', '.')
+            yuzde = match.group(2)
+            
+            # Formatla
+            try:
+                tutar = float(tutar_str)
+                formatted_tutar = f"{tutar:,.0f}".replace(',', '.')
+                aciklama = f"{yuzde}'i"
+                
+                return {
+                    'tutar': formatted_tutar,
+                    'aciklama': aciklama
+                }
+            except:
+                pass
+        
+        # Pattern 2: Sadece rakam veya "5.000 TL" formatı
+        pattern2 = r"([\d.,]+)\s*TL?"
+        match = re.search(pattern2, text, re.IGNORECASE)
+        
+        if match:
+            tutar_str = match.group(1).replace('.', '').replace(',', '.')
+            try:
+                tutar = float(tutar_str)
+                formatted_tutar = f"{tutar:,.0f}".replace(',', '.')
+                
+                return {
+                    'tutar': formatted_tutar,
+                    'aciklama': 'sabit tutar'
+                }
+            except:
+                pass
+        
+        raise ValueError("Geçersiz format")
+
     
     async def generate_offer(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Teklif oluşturma işlemini gerçekleştir"""
@@ -475,7 +595,7 @@ class OfferBot:
             }
             
             # 1. YTB Teklif Excel'i oluştur
-            await update.message.reply_text("📄 1/3 - Teklif formu hazırlanıyor...")
+            await update.message.reply_text("📄 1/4 - Teklif formu hazırlanıyor...")
             excel_path = self.excel_handler.create_offer(customer_data, services, offer_info)
             subtotal = sum(s['quantity'] * s['unit_price'] for s in services)
             kdv = subtotal * config.KDV_RATE
@@ -493,7 +613,7 @@ class OfferBot:
             email = context.user_data.get('email', '')
             
             if tax_data and email:
-                await update.message.reply_text("📄 2/3 - Yetkilendirme Taahhütnamesi hazırlanıyor...")
+                await update.message.reply_text("📄 2/4 - Yetkilendirme Taahhütnamesi hazırlanıyor...")
                 word_file = self.document_handler.fill_yetkilendirme_taahhutnamesi(tax_data)
                 if word_file:
                     word_pdf = self.document_handler.convert_to_pdf(word_file)
@@ -501,12 +621,24 @@ class OfferBot:
                         pdf_files.append(word_pdf)
                 
                 # 3. Kullanıcı Yetkilendirme Formu oluştur
-                await update.message.reply_text("📄 3/3 - Kullanıcı Yetkilendirme Formu hazırlanıyor...")
+                await update.message.reply_text("📄 3/4 - Kullanıcı Yetkilendirme Formu hazırlanıyor...")
                 excel_form = self.document_handler.fill_kullanici_yetkilendirme_formu(tax_data, email)
                 if excel_form:
                     excel_form_pdf = self.document_handler.convert_to_pdf(excel_form)
                     if excel_form_pdf and Path(excel_form_pdf).exists():
                         pdf_files.append(excel_form_pdf)
+                
+                # 4. Sözleşme oluştur (proje türü varsa)
+                proje_turu = context.user_data.get('proje_turu')
+                ucret_bilgisi = context.user_data.get('ucret_bilgisi')
+                
+                if proje_turu and ucret_bilgisi:
+                    await update.message.reply_text("📄 4/4 - Sözleşme hazırlanıyor...")
+                    sozlesme_file = self.document_handler.fill_sozlesme(tax_data, proje_turu, ucret_bilgisi)
+                    if sozlesme_file:
+                        sozlesme_pdf = self.document_handler.convert_to_pdf(sozlesme_file)
+                        if sozlesme_pdf and Path(sozlesme_pdf).exists():
+                            pdf_files.append(sozlesme_pdf)
             
             # Tüm PDF'leri gönder
             success_msg = config.MESSAGES['success'].format(subtotal=subtotal, kdv=kdv, total=total)
@@ -576,6 +708,8 @@ def main():
             ASK_ADD_MORE: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.ask_add_more)],
             ASK_NOTES_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.receive_notes_choice)],
             ASK_NOTES_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.receive_notes_text)],
+            ASK_PROJECT_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.receive_project_type)],
+            ASK_CONTRACT_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.receive_contract_amount)],
         },
         fallbacks=[CommandHandler('iptal', bot.cancel)],
     )

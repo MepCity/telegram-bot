@@ -174,6 +174,76 @@ class DocumentHandler:
         except Exception as e:
             print(f'PDF conversion error: {e}')
             return None
+    
+    def fill_sozlesme(self, tax_data, proje_turu, ucret_bilgisi, output_path=None):
+        """
+        Sözleşme Word belgesini doldurur.
+        
+        Args:
+            tax_data: PDF'den çıkarılan vergi bilgileri
+            proje_turu: Proje türü (ör: "TÜBİTAK 1501 PROJESİ")
+            ucret_bilgisi: Ücret bilgisi dict {
+                'tutar': str,  # Örn: "80.000 TL'nin %5'i"
+                'aciklama': str  # Örn: "projenin onaylanması ile onaylanan tutar üzerinden %5'i"
+            }
+            output_path: Çıktı dosyasının kaydedileceği yol (opsiyonel)
+            
+        Returns:
+            str: Oluşturulan dosyanın yolu
+        """
+        try:
+            # Şablon dosyasını aç - .docx formatında olmalı
+            template_path = os.path.join(self.template_dir, 'Sözleşme.docx')
+            
+            if not os.path.exists(template_path):
+                raise Exception(f"Şablon bulunamadı: {template_path}")
+            
+            doc = Document(template_path)
+            
+            # Firma adı ve vergi numarası
+            company_name = tax_data.get('company_name', '')
+            tax_number = tax_data.get('tax_number', '')
+            
+            # Metni değiştir
+            for para in doc.paragraphs:
+                # 1. ... (....) → Firma adı (Vergi No)
+                if '... (....)' in para.text:
+                    para.text = para.text.replace('... (....)', f'{company_name} ({tax_number})')
+                    print(f"✓ Firma bilgisi yerleştirildi: {company_name} ({tax_number})")
+                
+                # 2. ... hazırlanması → Proje türü
+                if '... hazırlanması' in para.text:
+                    para.text = para.text.replace('... hazırlanması', f'{proje_turu.upper()} hazırlanması')
+                    print(f"✓ Proje türü yerleştirildi: {proje_turu.upper()}")
+                
+                # 3. ... TL projenin → Ücret tutarı
+                if '... TL projenin' in para.text:
+                    para.text = para.text.replace('... TL projenin', f"{ucret_bilgisi['tutar']} projenin")
+                    print(f"✓ Ücret tutarı yerleştirildi: {ucret_bilgisi['tutar']}")
+                
+                # 4. ... talep edilir → Ücret açıklaması
+                if '... talep edilir' in para.text:
+                    para.text = para.text.replace('... talep edilir', f"{ucret_bilgisi['aciklama']} talep edilir")
+                    print(f"✓ Ücret açıklaması yerleştirildi: {ucret_bilgisi['aciklama']}")
+            
+            # Çıktı dosyasını kaydet
+            if not output_path:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                safe_company = company_name[:30].replace('/', '_').replace('\\', '_')
+                filename = f'Sozlesme_{safe_company}_{timestamp}.docx'
+                output_path = os.path.join(self.output_dir, filename)
+            
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            doc.save(output_path)
+            
+            print(f'✅ Sözleşme oluşturuldu: {output_path}')
+            return output_path
+            
+        except Exception as e:
+            print(f'❌ Sözleşme doldurma hatası: {e}')
+            import traceback
+            traceback.print_exc()
+            return None
 
 
 if __name__ == '__main__':

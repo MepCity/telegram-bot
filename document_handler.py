@@ -255,6 +255,7 @@ class DocumentHandler:
             # Firma adı ve vergi numarası
             company_name = tax_data.get('company_name', '')
             tax_number = tax_data.get('tax_number', '')
+            address = tax_data.get('address', '')
             
             # Ücret tutarını TL ile birlikte formatla
             tutar_with_tl = ucret_bilgisi['tutar'] + ' TL'
@@ -271,17 +272,22 @@ class DocumentHandler:
                     para.text = para.text.replace('... hazırlanması', f'{proje_turu.upper()} hazırlanması')
                     print(f"✓ Proje türü yerleştirildi: {proje_turu.upper()}")
                 
-                # 3. ... TL projenin → Ücret tutarı (TL ile birlikte)
+                # 3. Madde 3-1: ..... adresindeki → Firma adresi
+                if '..... adresindeki' in para.text:
+                    para.text = para.text.replace('..... adresindeki', f'{address} adresindeki')
+                    print(f"✓ Adres yerleştirildi: {address}")
+                
+                # 4. ... TL projenin → Ücret tutarı (TL ile birlikte)
                 if '... TL projenin' in para.text:
                     para.text = para.text.replace('... TL projenin', f"{tutar_with_tl} projenin")
                     print(f"✓ Ücret tutarı yerleştirildi: {tutar_with_tl}")
                 
-                # 4. ... talep edilir → Ücret açıklaması
+                # 5. ... talep edilir → Ücret açıklaması
                 if '... talep edilir' in para.text:
                     para.text = para.text.replace('... talep edilir', f"{ucret_bilgisi['aciklama']} talep edilir")
                     print(f"✓ Ücret açıklaması yerleştirildi: {ucret_bilgisi['aciklama']}")
                 
-                # 5. Sabit tutarın ... TL'si → Sabit tutarın 100.000 TL'si
+                # 6. Sabit tutarın ... TL'si → Sabit tutarın 100.000 TL'si
                 if 'Sabit tutarın ... TL' in para.text:
                     para.text = para.text.replace('Sabit tutarın ... TL', f"Sabit tutarın {tutar_with_tl}")
                     print(f"✓ Sabit tutar yerleştirildi: {tutar_with_tl}")

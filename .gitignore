@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Çevre değişkenleri
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+._*
+
+# Outputs
+outputs/*.xlsx
+outputs/*.pdf
+temp/*.pdf
+temp/*.xlsx
+
+# Logs
+*.log

@@ -18,15 +18,16 @@ from excel_handler import ExcelHandler
 from pdf_reader import PDFReader
 from pdf_converter import PDFConverter
 from gemini_ocr import GeminiOCR
+from email_sender import EmailSender
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Conversation states - Manuel giriş ve sözleşme için state'ler
+# Conversation states - Manuel giriş, sözleşme ve email için state'ler
 (ASK_TAX_PDF, ASK_TAX_NUMBER, ASK_CONTACT_PERSON, ASK_OFFER_DATE, ASK_MANUAL_DATE, 
  ASK_EMAIL, ASK_SERVICE_NAME, ASK_QUANTITY, ASK_UNIT_PRICE, ASK_ADD_MORE,
  ASK_MANUAL_ENTRY, ASK_MANUAL_COMPANY, ASK_MANUAL_TAX_OFFICE, ASK_MANUAL_TAX_NUMBER, ASK_MANUAL_ADDRESS,
- ASK_NOTES_CHOICE, ASK_NOTES_TEXT, ASK_PROJECT_TYPE, ASK_CONTRACT_AMOUNT) = range(19)
+ ASK_NOTES_CHOICE, ASK_NOTES_TEXT, ASK_PROJECT_TYPE, ASK_CONTRACT_AMOUNT, ASK_SEND_EMAIL) = range(20)
 
 class OfferBot:
     def __init__(self):
@@ -44,6 +45,10 @@ class OfferBot:
         
         from document_handler import DocumentHandler
         self.document_handler = DocumentHandler()
+        
+        # Email sender'ı başlat
+        self.email_sender = EmailSender()
+        
         Path(config.TEMP_DIR).mkdir(exist_ok=True)
         Path(config.OUTPUT_DIR).mkdir(exist_ok=True)
     
@@ -666,6 +671,10 @@ class OfferBot:
             success_msg = config.MESSAGES['success'].format(subtotal=subtotal, kdv=kdv, total=total)
             
             if pdf_files:
+                # PDF'leri context'e kaydet (email için)
+                context.user_data['pdf_files'] = pdf_files
+                context.user_data['customer_name'] = customer_data['name']
+                
                 await update.message.reply_text(f"✅ {len(pdf_files)} belge oluşturuldu!")
                 for i, pdf_file in enumerate(pdf_files, 1):
                     with open(pdf_file, 'rb') as f:
@@ -676,8 +685,22 @@ class OfferBot:
                             caption=caption,
                             parse_mode='Markdown' if caption else None
                         )
-                    # PDF'i sil
-                    Path(pdf_file).unlink(missing_ok=True)
+                
+                # Email gönderme seçeneği sun
+                if self.email_sender.enabled:
+                    keyboard = [['✅ Evet, e-posta gönder', '❌ Hayır, gerek yok']]
+                    await update.message.reply_text(
+                        "📧 *Bu belgeleri e-posta ile göndermek ister misiniz?*\n\n"
+                        f"Alıcı: {context.user_data.get('email', 'Bilinmiyor')}",
+                        reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True),
+                        parse_mode='Markdown'
+                    )
+                    return ASK_SEND_EMAIL
+                else:
+                    # Email devre dışıysa PDF'leri sil ve bitir
+                    for pdf_file in pdf_files:
+                        Path(pdf_file).unlink(missing_ok=True)
+                    return ConversationHandler.END
             else:
                 # PDF oluşturulamadıysa Excel gönder
                 with open(excel_path, 'rb') as f:
@@ -687,11 +710,67 @@ class OfferBot:
                         caption=success_msg + "\n\n⚠️ PDF oluşturulamadı, Excel gönderildi.", 
                         parse_mode='Markdown'
                     )
+                return ConversationHandler.END
         except Exception as e:
             logger.error(f'Hata: {e}')
             import traceback
             traceback.print_exc()
             await update.message.reply_text(f"❌ Hata: {e}")
+        
+        return ConversationHandler.END
+    
+    async def ask_send_email(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """E-posta gönderme kararını al"""
+        choice = update.message.text.strip().lower()
+        
+        if 'evet' in choice or 'gönder' in choice:
+            # E-posta gönder
+            await update.message.reply_text(
+                "📧 E-posta gönderiliyor...",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            
+            pdf_files = context.user_data.get('pdf_files', [])
+            customer_name = context.user_data.get('customer_name', 'Müşteri')
+            to_email = context.user_data.get('email', '')
+            
+            if not to_email:
+                await update.message.reply_text("❌ E-posta adresi bulunamadı!")
+                # PDF'leri temizle
+                for pdf_file in pdf_files:
+                    Path(pdf_file).unlink(missing_ok=True)
+                return ConversationHandler.END
+            
+            # E-posta gönder
+            success = self.email_sender.send_offer_email(
+                to_email=to_email,
+                customer_name=customer_name,
+                pdf_files=pdf_files
+            )
+            
+            if success:
+                await update.message.reply_text(
+                    f"✅ *E-posta başarıyla gönderildi!*\n\n"
+                    f"📧 Alıcı: {to_email}\n"
+                    f"📎 {len(pdf_files)} belge eklendi",
+                    parse_mode='Markdown'
+                )
+            else:
+                await update.message.reply_text(
+                    "❌ E-posta gönderilemedi!\n\n"
+                    "Belgeler Telegram'da size iletildi.",
+                    parse_mode='Markdown'
+                )
+        else:
+            await update.message.reply_text(
+                "👌 Tamam, e-posta gönderilmedi.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+        
+        # PDF'leri temizle
+        pdf_files = context.user_data.get('pdf_files', [])
+        for pdf_file in pdf_files:
+            Path(pdf_file).unlink(missing_ok=True)
         
         return ConversationHandler.END
     
@@ -732,6 +811,7 @@ def main():
             ASK_NOTES_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.receive_notes_text)],
             ASK_PROJECT_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.receive_project_type)],
             ASK_CONTRACT_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.receive_contract_amount)],
+            ASK_SEND_EMAIL: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.ask_send_email)],
         },
         fallbacks=[CommandHandler('iptal', bot.cancel)],
     )

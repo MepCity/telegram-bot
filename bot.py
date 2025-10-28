@@ -48,6 +48,7 @@ class OfferBot:
         
         # Email sender'ı başlat
         self.email_sender = EmailSender()
+        logger.info(f'📧 Email durumu: {"Aktif" if self.email_sender.enabled else "Devre dışı"}')
         
         Path(config.TEMP_DIR).mkdir(exist_ok=True)
         Path(config.OUTPUT_DIR).mkdir(exist_ok=True)

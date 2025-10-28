@@ -716,8 +716,7 @@ class OfferBot:
             import traceback
             traceback.print_exc()
             await update.message.reply_text(f"❌ Hata: {e}")
-        
-        return ConversationHandler.END
+            return ConversationHandler.END
     
     async def ask_send_email(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """E-posta gönderme kararını al"""

@@ -5,6 +5,7 @@ __pycache__/
 *.so
 .Python
 venv/
+.venv/
 env/
 ENV/
 *.egg-info/
@@ -25,11 +26,26 @@ build/
 .DS_Store
 ._*
 
-# Outputs
+# Outputs (sadece counter'ı sakla)
 outputs/*.xlsx
 outputs/*.pdf
-temp/*.pdf
-temp/*.xlsx
+outputs/*.docx
+!outputs/offer_counter.json
+
+# Temp files
+temp/*
+!temp/.gitkeep
+
+# Test files
+*test*.pdf
+*test*.jpg
+*test*.png
+foto.jpg
+
+# Old templates
+YTB*.xlsx
+.~*.xlsx
+~$*.xlsx
 
 # Logs
 *.log

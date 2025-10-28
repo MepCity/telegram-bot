@@ -471,7 +471,7 @@ class OfferBot:
             "💰 Sözleşme bedelini yazın:\n\n"
             "Örnekler:\n"
             "• 80.000 TL'nin %5'i\n"
-            "• 50000 TL nin %10 u\n"
+            "• 100.000 %5\n"
             "• 5.000 TL\n"
             "• 10000\n\n"
             "ℹ️ Hem sabit tutar hem de yüzde hesaplamaları desteklenir.",
@@ -505,7 +505,9 @@ class OfferBot:
                 "Lütfen formatı kontrol edip tekrar deneyin.\n\n"
                 "Örnekler:\n"
                 "• 80.000 TL'nin %5'i\n"
-                "• 5.000 TL",
+                "• 100.000 %5\n"
+                "• 5.000 TL\n"
+                "• 10000",
                 parse_mode='Markdown'
             )
             return ASK_CONTRACT_AMOUNT
@@ -546,9 +548,29 @@ class OfferBot:
             except:
                 pass
         
-        # Pattern 2: Sadece rakam veya "5.000 TL" formatı
-        pattern2 = r"([\d.,]+)\s*TL?"
+        # Pattern 2: "100.000 %5" formatı (TL'nin kelimesi yok)
+        pattern2 = r"([\d.,]+)\s+(%\d+)"
         match = re.search(pattern2, text, re.IGNORECASE)
+        
+        if match:
+            tutar_str = match.group(1).replace('.', '').replace(',', '.')
+            yuzde = match.group(2)
+            
+            try:
+                tutar = float(tutar_str)
+                formatted_tutar = f"{tutar:,.0f}".replace(',', '.')
+                aciklama = f"{yuzde}'i"
+                
+                return {
+                    'tutar': formatted_tutar,
+                    'aciklama': aciklama
+                }
+            except:
+                pass
+        
+        # Pattern 3: Sadece rakam veya "5.000 TL" formatı
+        pattern3 = r"([\d.,]+)"
+        match = re.search(pattern3, text)
         
         if match:
             tutar_str = match.group(1).replace('.', '').replace(',', '.')

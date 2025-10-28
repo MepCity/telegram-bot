@@ -158,26 +158,47 @@ class DocumentHandler:
             soffice_paths = [
                 '/usr/bin/soffice',
                 '/usr/bin/libreoffice',
+                '/usr/lib/libreoffice/program/soffice',  # Ubuntu alternatif yol
+                '/opt/libreoffice/program/soffice',  # Manuel kurulum
                 '/Applications/LibreOffice.app/Contents/MacOS/soffice',
                 'soffice',
             ]
             
             soffice_cmd = None
+            print(f"🔍 LibreOffice aranıyor...")
+            
             for path in soffice_paths:
                 if Path(path).exists():
                     soffice_cmd = path
+                    print(f"✅ LibreOffice bulundu: {path}")
                     break
+                else:
+                    print(f"❌ Bulunamadı: {path}")
             
             if not soffice_cmd:
                 # which ile ara
-                result = subprocess.run(['which', 'soffice'], capture_output=True, text=True, timeout=5)
-                if result.returncode == 0:
-                    soffice_cmd = result.stdout.strip()
-                else:
-                    print('❌ LibreOffice (soffice) bulunamadı')
+                try:
+                    result = subprocess.run(['which', 'soffice'], capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0 and result.stdout.strip():
+                        soffice_cmd = result.stdout.strip()
+                        print(f"✅ which ile bulundu: {soffice_cmd}")
+                    else:
+                        # whereis ile de dene
+                        result = subprocess.run(['whereis', 'soffice'], capture_output=True, text=True, timeout=5)
+                        print(f"🔍 whereis soffice: {result.stdout}")
+                        
+                        # dpkg ile paket kontrolü
+                        result = subprocess.run(['dpkg', '-L', 'libreoffice-writer'], capture_output=True, text=True, timeout=5)
+                        print(f"📦 libreoffice-writer dosyaları:\n{result.stdout[:500]}")
+                except Exception as e:
+                    print(f"⚠️ which/whereis hatası: {e}")
+                
+                if not soffice_cmd:
+                    print('❌ LibreOffice (soffice) hiçbir yerde bulunamadı')
                     return None
             
             # LibreOffice ile PDF'e çevir
+            print(f"🔄 PDF dönüştürme başlıyor: {soffice_cmd}")
             result = subprocess.run([
                 soffice_cmd,
                 '--headless',
@@ -191,12 +212,19 @@ class DocumentHandler:
                 if pdf_path.exists():
                     print(f'✅ PDF oluşturuldu: {pdf_path}')
                     return str(pdf_path)
+                else:
+                    print(f'❌ PDF dosyası oluşmadı: {pdf_path}')
+            else:
+                print(f'❌ LibreOffice dönüştürme hatası (returncode={result.returncode})')
+                print(f'STDOUT: {result.stdout}')
+                print(f'STDERR: {result.stderr}')
             
-            print(f'❌ LibreOffice conversion failed: {result.stderr}')
             return None
             
         except Exception as e:
-            print(f'PDF conversion error: {e}')
+            print(f'❌ PDF conversion exception: {e}')
+            import traceback
+            traceback.print_exc()
             return None
     
     def fill_sozlesme(self, tax_data, proje_turu, ucret_bilgisi, output_path=None):

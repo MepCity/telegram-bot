@@ -8,6 +8,7 @@ import logging
 from pathlib import Path
 import google.generativeai as genai
 from PIL import Image
+import fitz  # PyMuPDF - PDF'den görsel çıkarmak için
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,63 @@ CEVABI SADECE JSON formatında ver, başka açıklama ekleme:
             
         except Exception as e:
             logger.error(f'❌ Gemini okuma hatası: {e}')
+            return {
+                'company_name': '',
+                'tax_office': '',
+                'tax_number': '',
+                'address': ''
+            }
+    
+    return result
+    
+    def extract_tax_info_from_pdf(self, pdf_path):
+        """
+        PDF'den vergi levhası bilgilerini çıkar (Gemini Vision)
+        
+        Args:
+            pdf_path: PDF dosya yolu
+            
+        Returns:
+            dict: {
+                'company_name': str,
+                'tax_office': str, 
+                'tax_number': str,
+                'address': str
+            }
+        """
+        try:
+            logger.info(f'🤖 Gemini Vision ile PDF okuma başlıyor: {pdf_path}')
+            
+            # PDF'in ilk sayfasını görsel olarak yükle
+            pdf_document = fitz.open(pdf_path)
+            first_page = pdf_document[0]
+            
+            # Sayfayı yüksek çözünürlükte görsel olarak al
+            pix = first_page.get_pixmap(matrix=fitz.Matrix(2, 2))  # 2x zoom
+            
+            # Geçici görsel dosyasına kaydet
+            temp_image = Path(pdf_path).parent / f"{Path(pdf_path).stem}_temp.png"
+            pix.save(str(temp_image))
+            pdf_document.close()
+            
+            # Gemini Vision ile görseli oku
+            result = self.extract_tax_info(str(temp_image))
+            
+            # Geçici dosyayı sil
+            temp_image.unlink(missing_ok=True)
+            
+            logger.info(f'✅ PDF Gemini okuma başarılı')
+            return result
+            
+        except Exception as e:
+            logger.error(f'❌ PDF Gemini okuma hatası: {e}')
+            # Hata olursa geçici dosyayı temizle
+            try:
+                temp_image = Path(pdf_path).parent / f"{Path(pdf_path).stem}_temp.png"
+                temp_image.unlink(missing_ok=True)
+            except:
+                pass
+            
             return {
                 'company_name': '',
                 'tax_office': '',

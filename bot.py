@@ -69,7 +69,21 @@ class OfferBot:
         await update.message.reply_text("⏳ Vergi levhası okunuyor...")
         
         try:
-            tax_info = self.pdf_reader.extract_tax_info(str(pdf_path))
+            # Önce Gemini Vision ile dene (daha doğru)
+            if self.gemini_ocr:
+                logger.info('🤖 Gemini Vision ile PDF okuma deneniyor...')
+                await update.message.reply_text("🤖 Gemini AI ile analiz ediliyor...")
+                tax_info = self.gemini_ocr.extract_tax_info_from_pdf(str(pdf_path))
+                
+                # Gemini başarısızsa Tesseract'e düş
+                if not tax_info.get('company_name'):
+                    logger.warning('⚠️ Gemini okuamadı, Tesseract deneniyor...')
+                    await update.message.reply_text("🔄 Alternatif yöntemle deneniyor...")
+                    tax_info = self.pdf_reader.extract_tax_info(str(pdf_path))
+            else:
+                # Gemini yoksa direkt Tesseract
+                tax_info = self.pdf_reader.extract_tax_info(str(pdf_path))
+            
             company_name = tax_info.get('company_name', '')
             
             # Tax data'yı context'e kaydet (document_handler için)

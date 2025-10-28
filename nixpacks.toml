@@ -1,5 +1,5 @@
 [phases.setup]
-aptPkgs = ['libreoffice', 'tesseract-ocr', 'tesseract-ocr-tur']
+aptPkgs = ['libreoffice-writer', 'libreoffice-calc', 'tesseract-ocr', 'tesseract-ocr-tur', 'fonts-liberation']
 
 [phases.install]
 cmds = ['pip install -r requirements.txt']

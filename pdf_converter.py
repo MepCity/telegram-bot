@@ -47,22 +47,35 @@ class PDFConverter:
     def _convert_with_libreoffice(self, excel_path, pdf_path):
         """LibreOffice ile dönüştür"""
         try:
-            # LibreOffice yollarını kontrol et
+            # LibreOffice yollarını kontrol et (sıralama önemli - Railway için)
             libreoffice_paths = [
-                '/Applications/LibreOffice.app/Contents/MacOS/soffice',
-                '/usr/bin/libreoffice',
+                '/usr/bin/soffice',  # Railway/Linux
+                '/usr/bin/libreoffice',  # Linux alternatif
+                '/Applications/LibreOffice.app/Contents/MacOS/soffice',  # macOS
                 '/usr/local/bin/libreoffice',
                 'soffice',
+                'libreoffice',
             ]
             
             libreoffice_cmd = None
             for path in libreoffice_paths:
-                if Path(path).exists() or subprocess.run(['which', path], capture_output=True).returncode == 0:
-                    libreoffice_cmd = path
-                    break
+                try:
+                    if Path(path).exists():
+                        libreoffice_cmd = path
+                        break
+                    # which komutu ile de kontrol et
+                    result = subprocess.run(['which', path], capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0 and result.stdout.strip():
+                        libreoffice_cmd = result.stdout.strip()
+                        break
+                except:
+                    continue
             
             if not libreoffice_cmd:
+                print("❌ LibreOffice bulunamadı")
                 return False
+            
+            print(f"✅ LibreOffice bulundu: {libreoffice_cmd}")
             
             # Excel'i PDF'e çevir
             output_dir = excel_path.parent
@@ -72,7 +85,10 @@ class PDFConverter:
                 '--convert-to', 'pdf',
                 '--outdir', str(output_dir),
                 str(excel_path)
-            ], capture_output=True, timeout=30)
+            ], capture_output=True, timeout=30, text=True)
+            
+            if result.returncode != 0:
+                print(f"❌ LibreOffice hata: {result.stderr}")
             
             return result.returncode == 0 and pdf_path.exists()
             

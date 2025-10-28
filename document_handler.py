@@ -154,21 +154,45 @@ class DocumentHandler:
         output_dir = input_path.parent
         
         try:
+            # LibreOffice yolunu bul (Railway/Linux için)
+            soffice_paths = [
+                '/usr/bin/soffice',
+                '/usr/bin/libreoffice',
+                '/Applications/LibreOffice.app/Contents/MacOS/soffice',
+                'soffice',
+            ]
+            
+            soffice_cmd = None
+            for path in soffice_paths:
+                if Path(path).exists():
+                    soffice_cmd = path
+                    break
+            
+            if not soffice_cmd:
+                # which ile ara
+                result = subprocess.run(['which', 'soffice'], capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    soffice_cmd = result.stdout.strip()
+                else:
+                    print('❌ LibreOffice (soffice) bulunamadı')
+                    return None
+            
             # LibreOffice ile PDF'e çevir
             result = subprocess.run([
-                'soffice',
+                soffice_cmd,
                 '--headless',
                 '--convert-to', 'pdf',
                 '--outdir', str(output_dir),
                 str(input_path)
-            ], capture_output=True, timeout=30)
+            ], capture_output=True, timeout=30, text=True)
             
             if result.returncode == 0:
                 pdf_path = input_path.with_suffix('.pdf')
                 if pdf_path.exists():
+                    print(f'✅ PDF oluşturuldu: {pdf_path}')
                     return str(pdf_path)
             
-            print(f'LibreOffice conversion failed: {result.stderr}')
+            print(f'❌ LibreOffice conversion failed: {result.stderr}')
             return None
             
         except Exception as e:

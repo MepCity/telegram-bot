@@ -21,6 +21,10 @@ class EmailSender:
         self.gmail_user = gmail_user or os.getenv('GMAIL_USER')
         self.gmail_password = gmail_password or os.getenv('GMAIL_APP_PASSWORD')
         
+        # Debug: Environment variables'ı kontrol et
+        print(f'🔍 DEBUG - GMAIL_USER: {self.gmail_user}')
+        print(f'🔍 DEBUG - GMAIL_APP_PASSWORD: {"*" * len(self.gmail_password) if self.gmail_password else "None"}')
+        
         if not self.gmail_user or not self.gmail_password:
             print('⚠️ Gmail bilgileri eksik! GMAIL_USER ve GMAIL_APP_PASSWORD environment variable\'larını ayarlayın.')
             self.enabled = False

@@ -33,11 +33,11 @@ class DocumentHandler:
         """
         try:
             # Şablon dosyasını aç - .docx formatında olmalı
-            template_path = os.path.join(self.template_dir, 'Yetkilendirme Tahattütnamesi.docx')
+            template_path = os.path.join(self.template_dir, 'YetkilendirmeTaahhutname.docx')
             
             # Eğer .docx yoksa .doc'u dönüştür
             if not os.path.exists(template_path):
-                doc_path = os.path.join(self.template_dir, 'Yetkilendirme Tahattütnamesi.doc')
+                doc_path = os.path.join(self.template_dir, 'YetkilendirmeTaahhutname.doc')
                 if os.path.exists(doc_path):
                     print("📄 .doc dosyasını .docx'e dönüştürüyorum...")
                     import subprocess

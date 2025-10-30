@@ -151,9 +151,9 @@ class ExcelHandler:
                 # fallback
                 ws.cell(row=r, column=c).value = v
         
-        # FİX: Tablo başlıklarının (Satır 12) ve toplam satırlarının (Satır 20) font renklerini beyaz yap
+        # FİX: Tablo başlıklarının (Satır 14) ve toplam satırlarının (Satır 22) font renklerini beyaz yap
         # Koyu arka planda (FF34495D) siyah yazılar görünmüyor, beyaz olmalı
-        white_font_cells = ['A12', 'H12', 'I12', 'J12', 'G20', 'K20']  # C12 zaten beyaz şablonda
+        white_font_cells = ['A14', 'H14', 'I14', 'J14', 'G22', 'K22']  # C14 zaten beyaz şablonda
         for cell_ref in white_font_cells:
             cell = ws[cell_ref]
             if cell.font:
@@ -168,20 +168,20 @@ class ExcelHandler:
         # K3: Teklif No
         set_cell(3, 11, f"Teklif No: {offer_no}")
         
-        # SATIR 7-10: MÜŞTERİ BİLGİLERİ (Sol taraf - C sütunu)
-        set_cell(7, 3, customer_data.get('name', ''))  # C7 (E7:G7 merged) = Firma Adı
-        set_cell(8, 3, customer_data.get('contact_person', ''))  # C8 (E8:G8 merged) = Yetkili
-        set_cell(9, 3, customer_data.get('phone', ''))  # C9 (E9:G9 merged) = Telefon
+        # SATIR 9-12: MÜŞTERİ BİLGİLERİ (Sol taraf - C sütunu)
+        set_cell(9, 3, customer_data.get('name', ''))  # C9 = Firma Adı
+        set_cell(10, 3, customer_data.get('contact_person', ''))  # C10 = Yetkili
+        set_cell(11, 3, customer_data.get('phone', ''))  # C11 = Telefon
         
-        # SATIR 7-10: TEKLİF BİLGİLERİ (Sağ taraf - H sütunu)
-        set_cell(7, 8, offer_no)  # H7 (H7:K7 merged) = Teklif Sipariş No
-        set_cell(8, 8, offer_info.get('offer_date', datetime.now().strftime('%d.%m.%Y')))  # H8 (H8:K8 merged) = Teklif Tarihi
-        set_cell(9, 8, 'PEŞİN')  # H9 (H9:K9 merged) = Ödeme Şekli (her zaman PEŞİN)
-        set_cell(10, 8, '')  # H10 (H10:K10 merged) = Teslim Tarihi (boş)
+        # SATIR 9-12: TEKLİF BİLGİLERİ (Sağ taraf - H sütunu)
+        set_cell(9, 8, offer_no)  # H9 = Teklif Sipariş No
+        set_cell(10, 8, offer_info.get('offer_date', datetime.now().strftime('%d.%m.%Y')))  # H10 = Teklif Tarihi
+        set_cell(11, 8, 'PEŞİN')  # H11 = Ödeme Şekli (her zaman PEŞİN)
+        set_cell(12, 8, offer_info.get('delivery_date', ''))  # H12 = Planlanan Teslim Tarihi
         
-        # SATIR 14+: ÜRÜN TABLOSU
-        # Şablonda 14, 15, 16 satırları hazır - önce temizle
-        for row in range(14, 17):
+        # SATIR 16+: ÜRÜN TABLOSU
+        # Şablonda 16, 17, 18 satırları hazır - önce temizle
+        for row in range(16, 19):
             set_cell(row, 1, None)  # A: NO
             set_cell(row, 3, None)  # C: HİZMET (C-D merged)
             set_cell(row, 8, None)  # H: MİKTAR
@@ -189,11 +189,11 @@ class ExcelHandler:
             set_cell(row, 10, None)  # J: TUTAR (J-K merged)
         
         # Yeni ürünleri ekle
-        start_row = 14
+        start_row = 16
         total_amount = 0
         
         for idx, service in enumerate(services):
-            if idx >= 3:  # Maksimum 3 ürün (şablonda 14, 15, 16)
+            if idx >= 3:  # Maksimum 3 ürün (şablonda 16, 17, 18)
                 break
                 
             row = start_row + idx
@@ -217,28 +217,28 @@ class ExcelHandler:
             # J: TUTAR (J-K merged)
             set_cell(row, 10, f"{amount:,.2f} {currency}")
         
-        # SATIR 18-20: FİYAT HESAPLAMALARI (font renklerini koru)
-        # K18: Ara Toplam
-        set_cell_with_style(18, 11, f"{total_amount:,.2f} {currency}")
+        # SATIR 20-22: FİYAT HESAPLAMALARI (font renklerini koru)
+        # K20: Ara Toplam
+        set_cell_with_style(20, 11, f"{total_amount:,.2f} {currency}")
         
-        # K19: KDV (%25)
+        # K21: KDV (%25)
         kdv_amount = total_amount * config.KDV_RATE
-        set_cell_with_style(19, 11, f"{kdv_amount:,.2f} {currency}")
+        set_cell_with_style(21, 11, f"{kdv_amount:,.2f} {currency}")
         
-        # K20: Genel Toplam (K20-K21 merged, mavi arka plan)
+        # K22: Genel Toplam (K22-K23 merged, mavi arka plan)
         grand_total = total_amount + kdv_amount
-        set_cell_with_style(20, 11, f"{grand_total:,.2f} {currency}")
+        set_cell_with_style(22, 11, f"{grand_total:,.2f} {currency}")
         
-        # SATIR 18: NOTLAR (A18 hücresi - isteğe bağlı)
+        # SATIR 20: NOTLAR (A20 hücresi - isteğe bağlı)
         # Şablondaki varsayılan notu temizle ve kullanıcının notunu ekle
         notes = offer_info.get('notes', '')
         if notes:
-            set_cell(18, 1, notes)  # A18'e kullanıcının notunu yaz
+            set_cell(20, 1, notes)  # A20'ye kullanıcının notunu yaz
         else:
-            set_cell(18, 1, '')  # Boş bırak (şablondaki varsayılan notu sil)
+            set_cell(20, 1, '')  # Boş bırak (şablondaki varsayılan notu sil)
         
-        # SATIR 24: Sipariş Alan / Teklif Veren
-        set_cell(24, 1, "Adı Soyadı: Hatice Arslan")
+        # SATIR 26: Sipariş Alan / Teklif Veren
+        set_cell(26, 1, "Adı Soyadı: Hatice Arslan")
         
         # SATIR 25: İmza satırı (şablonda zaten "İmza" yazıyor - dokunma)
         
@@ -257,8 +257,8 @@ class ExcelHandler:
             ws.page_margins.top = 0.5
             ws.page_margins.bottom = 0.5
             
-            # Print area: A1'den K26'ya kadar (yeni.xlsx aralığı)
-            ws.print_area = "A1:K26"
+            # Print area: A1'den K28'e kadar (yeni.xlsx aralığı - 2 satır eklendi)
+            ws.print_area = "A1:K28"
         except Exception as e:
             # Hata olursa es geç
             pass

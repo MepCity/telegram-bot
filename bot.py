@@ -27,7 +27,8 @@ logger = logging.getLogger(__name__)
 (ASK_TAX_PDF, ASK_TAX_NUMBER, ASK_CONTACT_PERSON, ASK_OFFER_DATE, ASK_MANUAL_DATE, 
  ASK_EMAIL, ASK_SERVICE_NAME, ASK_QUANTITY, ASK_UNIT_PRICE, ASK_ADD_MORE,
  ASK_MANUAL_ENTRY, ASK_MANUAL_COMPANY, ASK_MANUAL_TAX_OFFICE, ASK_MANUAL_TAX_NUMBER, ASK_MANUAL_ADDRESS,
- ASK_NOTES_CHOICE, ASK_NOTES_TEXT, ASK_PROJECT_TYPE, ASK_CONTRACT_AMOUNT, ASK_SEND_EMAIL, ASK_EMAIL_FOR_SENDING) = range(21)
+ ASK_NOTES_CHOICE, ASK_NOTES_TEXT, ASK_PROJECT_TYPE, ASK_CONTRACT_AMOUNT, ASK_SEND_EMAIL, ASK_EMAIL_FOR_SENDING,
+ ASK_DELIVERY_DATE_CHOICE, ASK_DELIVERY_DATE) = range(23)
 
 class OfferBot:
     def __init__(self):
@@ -441,11 +442,14 @@ class OfferBot:
         else:
             # Not istemiyorsa boş not ile devam et
             context.user_data['notes'] = ''
-            # Not istenmediği için sözleşme sorusunu atla, direkt oluştura geç
-            await update.message.reply_text(config.MESSAGES['processing'], reply_markup=ReplyKeyboardRemove(), parse_mode='Markdown')
-            
-            # Sözleşme oluşturulsun mu kontrol et
-            return await self.ask_project_type(update, context)
+            # Teslim tarihi sorusuna geç
+            keyboard = [['Evet', 'Hayır']]
+            await update.message.reply_text(
+                "📅 Planlanan teslim tarihi girilsin mi?\n\n"
+                "(Excel'de H12 hücresinde görünecektir)",
+                reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+            )
+            return ASK_DELIVERY_DATE_CHOICE
     
     async def receive_notes_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Kullanıcının yazdığı notu kaydet"""
@@ -453,7 +457,41 @@ class OfferBot:
         context.user_data['notes'] = notes_text
         await update.message.reply_text(f"✅ Not eklendi:\n\n{notes_text}")
         
-        # Not eklendikten sonra sözleşme bilgilerini sor
+        # Teslim tarihi sorusuna geç
+        keyboard = [['Evet', 'Hayır']]
+        await update.message.reply_text(
+            "📅 Planlanan teslim tarihi girilsin mi?\n\n"
+            "(Excel'de H12 hücresinde görünecektir)",
+            reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+        )
+        return ASK_DELIVERY_DATE_CHOICE
+    
+    async def receive_delivery_date_choice(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Teslim tarihi girilip girilmeyeceğine karar ver"""
+        if update.message.text.strip().lower() in ['evet', 'e']:
+            await update.message.reply_text(
+                "📅 Planlanan teslim tarihini yazın:\n\n"
+                "Örnekler:\n"
+                "• 15.11.2025\n"
+                "• 30 gün içinde\n"
+                "• Sözleşme imzalandıktan sonra 2 hafta içinde\n"
+                "• ----",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            return ASK_DELIVERY_DATE
+        else:
+            # Teslim tarihi istemiyorsa boş bırak
+            context.user_data['delivery_date'] = ''
+            # Sözleşme sorusuna geç
+            return await self.ask_project_type(update, context)
+    
+    async def receive_delivery_date(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Kullanıcının yazdığı teslim tarihini kaydet"""
+        delivery_date = update.message.text.strip()
+        context.user_data['delivery_date'] = delivery_date
+        await update.message.reply_text(f"✅ Planlanan teslim tarihi: {delivery_date}")
+        
+        # Sözleşme sorusuna geç
         return await self.ask_project_type(update, context)
     
     async def ask_project_type(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -619,7 +657,8 @@ class OfferBot:
                 'validity': validity_date,  # Son geçerlilik
                 'currency': '₺',  # Para birimi (₺, $, €)
                 'discount_rate': 0,  # İskonto oranı (varsayılan 0)
-                'notes': context.user_data.get('notes', '')  # Kullanıcının eklediği not
+                'notes': context.user_data.get('notes', ''),  # Kullanıcının eklediği not
+                'delivery_date': context.user_data.get('delivery_date', '')  # Planlanan teslim tarihi
             }
             
             # 1. YTB Teklif Excel'i oluştur
@@ -828,6 +867,8 @@ def main():
             ASK_ADD_MORE: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.ask_add_more)],
             ASK_NOTES_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.receive_notes_choice)],
             ASK_NOTES_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.receive_notes_text)],
+            ASK_DELIVERY_DATE_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.receive_delivery_date_choice)],
+            ASK_DELIVERY_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.receive_delivery_date)],
             ASK_PROJECT_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.receive_project_type)],
             ASK_CONTRACT_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.receive_contract_amount)],
             ASK_SEND_EMAIL: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.ask_send_email)],

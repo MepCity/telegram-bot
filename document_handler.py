@@ -75,26 +75,31 @@ class DocumentHandler:
             
             # Sayfa düzenini ayarla (1 sayfaya sığdır)
             for section in doc.sections:
-                # Margin'leri minimuma indir
-                section.top_margin = Pt(28)      # ~1 cm
-                section.bottom_margin = Pt(28)   # ~1 cm
-                section.left_margin = Pt(42)     # ~1.5 cm
-                section.right_margin = Pt(42)    # ~1.5 cm
+                # Margin'leri minimum seviyeye çek (yazıcı marjinleri)
+                section.top_margin = Pt(22)      # ~0.75 cm (minimum)
+                section.bottom_margin = Pt(22)   # ~0.75 cm (minimum)
+                section.left_margin = Pt(36)     # ~1.25 cm
+                section.right_margin = Pt(36)    # ~1.25 cm
             
             # Paragraf ve font ayarlarını optimize et
             for paragraph in doc.paragraphs:
-                # Paragraf öncesi/sonrası boşlukları kaldır
+                # Paragraf öncesi/sonrası boşlukları tamamen kaldır
                 paragraph.paragraph_format.space_before = Pt(0)
-                paragraph.paragraph_format.space_after = Pt(3)  # Minimal boşluk
-                # Satır aralığını azalt
-                paragraph.paragraph_format.line_spacing = 0.95  # Daha sıkı satır aralığı
+                paragraph.paragraph_format.space_after = Pt(0)  # Sıfır boşluk
+                # Satır aralığını daha da azalt
+                paragraph.paragraph_format.line_spacing = 0.9  # Maksimum sıkıştırma
+                
+                # Boş paragrafları tamamen kaldır (keep_together ile)
+                if not paragraph.text.strip():
+                    paragraph.paragraph_format.space_after = Pt(0)
+                    paragraph.paragraph_format.line_spacing = 0.5  # Boş satırları minimize et
                 
                 # Font boyutunu küçült (eğer çok büyükse)
                 for run in paragraph.runs:
                     if run.font.size and run.font.size > Pt(11):
-                        run.font.size = Pt(11)  # Maksimum 11 pt
+                        run.font.size = Pt(10.5)  # Biraz daha küçült
                     elif run.font.size and run.font.size > Pt(10):
-                        run.font.size = Pt(10)  # Varsayılan 10 pt
+                        run.font.size = Pt(9.5)  # Daha kompakt
             
             # Çıktı dosyasını kaydet
             if output_path is None:

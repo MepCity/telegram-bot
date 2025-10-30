@@ -73,6 +73,22 @@ class DocumentHandler:
                     else:
                         break  # Veri yoksa dur
             
+            # Sayfa düzenini ayarla (1 sayfaya sığdır)
+            for section in doc.sections:
+                # A4 boyutu koru ama margin'leri daralt
+                section.top_margin = Pt(36)      # ~1.27 cm (varsayılan 2.54 cm)
+                section.bottom_margin = Pt(36)   # ~1.27 cm
+                section.left_margin = Pt(54)     # ~1.9 cm (varsayılan 2.54 cm)
+                section.right_margin = Pt(54)    # ~1.9 cm
+            
+            # Paragraf aralıklarını azalt
+            for paragraph in doc.paragraphs:
+                # Paragraf öncesi/sonrası boşlukları azalt
+                paragraph.paragraph_format.space_before = Pt(0)
+                paragraph.paragraph_format.space_after = Pt(6)  # Küçük boşluk
+                # Satır aralığını azalt
+                paragraph.paragraph_format.line_spacing = 1.0  # Tek satır aralığı
+            
             # Çıktı dosyasını kaydet
             if output_path is None:
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')

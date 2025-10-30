@@ -1,39 +1,38 @@
 """
-E-posta Gönderim Modülü - Gmail SMTP
+E-posta Gönderim Modülü - SendGrid API
 """
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.application import MIMEApplication
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
 from pathlib import Path
 import os
 import logging
+import base64
 
 logger = logging.getLogger(__name__)
 
 
 class EmailSender:
-    """Gmail SMTP ile e-posta gönder"""
+    """SendGrid API ile e-posta gönder"""
     
-    def __init__(self, gmail_user=None, gmail_password=None):
+    def __init__(self, sendgrid_api_key=None, from_email=None):
         """
         Args:
-            gmail_user: Gmail adresi (ör: example@gmail.com)
-            gmail_password: Gmail App Password (16 haneli)
+            sendgrid_api_key: SendGrid API Key
+            from_email: Gönderen e-posta adresi
         """
-        self.gmail_user = gmail_user or os.getenv('GMAIL_USER')
-        self.gmail_password = gmail_password or os.getenv('GMAIL_APP_PASSWORD')
+        self.api_key = sendgrid_api_key or os.getenv('SENDGRID_API_KEY')
+        self.from_email = from_email or os.getenv('SENDGRID_FROM_EMAIL') or 'hamasetyasir@gmail.com'
         
         # Debug: Environment variables'ı kontrol et
-        logger.info(f'🔍 DEBUG - GMAIL_USER: {self.gmail_user}')
-        logger.info(f'🔍 DEBUG - GMAIL_APP_PASSWORD: {"*" * len(self.gmail_password) if self.gmail_password else "None"}')
+        logger.info(f'🔍 DEBUG - SENDGRID_API_KEY: {"*" * 20 if self.api_key else "None"}')
+        logger.info(f'🔍 DEBUG - FROM_EMAIL: {self.from_email}')
         
-        if not self.gmail_user or not self.gmail_password:
-            logger.warning('⚠️ Gmail bilgileri eksik! GMAIL_USER ve GMAIL_APP_PASSWORD environment variable\'larını ayarlayın.')
+        if not self.api_key:
+            logger.warning('⚠️ SendGrid API Key eksik! SENDGRID_API_KEY environment variable\'ını ayarlayın.')
             self.enabled = False
         else:
             self.enabled = True
-            logger.info(f'✅ Email gönderimi aktif: {self.gmail_user}')
+            logger.info(f'✅ Email gönderimi aktif (SendGrid): {self.from_email}')
     
     def send_offer_email(self, to_email, customer_name, pdf_files):
         """
@@ -48,18 +47,14 @@ class EmailSender:
             bool: Başarılı ise True
         """
         if not self.enabled:
-            print('❌ Email gönderimi devre dışı (Gmail bilgileri eksik)')
+            logger.warning('❌ Email gönderimi devre dışı (SendGrid API Key eksik)')
             return False
         
+        logger.info(f'📧 E-posta hazırlanıyor: {to_email}')
+        
         try:
-            # E-posta mesajı oluştur
-            msg = MIMEMultipart()
-            msg['From'] = self.gmail_user
-            msg['To'] = to_email
-            msg['Subject'] = f'Teklif Belgeleriniz - {customer_name}'
-            
             # E-posta içeriği (HTML)
-            body = f"""
+            html_content = f"""
             <html>
                 <body style="font-family: Arial, sans-serif;">
                     <h2 style="color: #2c3e50;">Sayın {customer_name},</h2>
@@ -86,7 +81,13 @@ class EmailSender:
             </html>
             """
             
-            msg.attach(MIMEText(body, 'html'))
+            # E-posta mesajı oluştur
+            message = Mail(
+                from_email=self.from_email,
+                to_emails=to_email,
+                subject=f'Teklif Belgeleriniz - {customer_name}',
+                html_content=html_content
+            )
             
             # PDF dosyalarını ekle
             for pdf_path in pdf_files:
@@ -95,36 +96,25 @@ class EmailSender:
                     continue
                 
                 with open(pdf_path, 'rb') as f:
-                    pdf_attachment = MIMEApplication(f.read(), _subtype='pdf')
-                    pdf_attachment.add_header('Content-Disposition', 'attachment', 
-                                            filename=Path(pdf_path).name)
-                    msg.attach(pdf_attachment)
-                    logger.info(f'📎 Eklendi: {Path(pdf_path).name}')
+                    file_data = f.read()
+                    encoded_file = base64.b64encode(file_data).decode()
+                    
+                    attached_file = Attachment(
+                        FileContent(encoded_file),
+                        FileName(Path(pdf_path).name),
+                        FileType('application/pdf'),
+                        Disposition('attachment')
+                    )
+                    message.add_attachment(attached_file)
+                    logger.info(f'� Eklendi: {Path(pdf_path).name}')
             
-            # Gmail SMTP ile gönder
-            logger.info(f'📧 E-posta gönderiliyor: {to_email}')
+            # SendGrid ile gönder
+            logger.info(f'📧 E-posta gönderiliyor (SendGrid): {to_email}')
             
-            # Port 587 (TLS) yerine Port 465 (SSL) dene
-            import ssl
-            context = ssl.create_default_context()
+            sg = SendGridAPIClient(self.api_key)
+            response = sg.send(message)
             
-            try:
-                # Önce Port 465 (SSL) ile dene
-                logger.info('📡 Port 465 (SSL) ile bağlanılıyor...')
-                server = smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context)
-                server.login(self.gmail_user, self.gmail_password)
-            except Exception as e:
-                # Port 465 başarısız olursa Port 587 (TLS) dene
-                logger.warning(f'⚠️ Port 465 başarısız: {e}')
-                logger.info('📡 Port 587 (TLS) ile bağlanılıyor...')
-                server = smtplib.SMTP('smtp.gmail.com', 587, timeout=30)
-                server.starttls(context=context)
-                server.login(self.gmail_user, self.gmail_password)
-            
-            server.send_message(msg)
-            server.quit()
-            
-            logger.info(f'✅ E-posta başarıyla gönderildi: {to_email}')
+            logger.info(f'✅ E-posta başarıyla gönderildi! Status Code: {response.status_code}')
             return True
             
         except Exception as e:

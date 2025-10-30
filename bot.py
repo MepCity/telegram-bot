@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 (ASK_TAX_PDF, ASK_TAX_NUMBER, ASK_CONTACT_PERSON, ASK_OFFER_DATE, ASK_MANUAL_DATE, 
  ASK_EMAIL, ASK_SERVICE_NAME, ASK_QUANTITY, ASK_UNIT_PRICE, ASK_ADD_MORE,
  ASK_MANUAL_ENTRY, ASK_MANUAL_COMPANY, ASK_MANUAL_TAX_OFFICE, ASK_MANUAL_TAX_NUMBER, ASK_MANUAL_ADDRESS,
- ASK_NOTES_CHOICE, ASK_NOTES_TEXT, ASK_PROJECT_TYPE, ASK_CONTRACT_AMOUNT, ASK_SEND_EMAIL) = range(20)
+ ASK_NOTES_CHOICE, ASK_NOTES_TEXT, ASK_PROJECT_TYPE, ASK_CONTRACT_AMOUNT, ASK_SEND_EMAIL, ASK_EMAIL_FOR_SENDING) = range(21)
 
 class OfferBot:
     def __init__(self):
@@ -691,8 +691,7 @@ class OfferBot:
                 if self.email_sender.enabled:
                     keyboard = [['✅ Evet, e-posta gönder', '❌ Hayır, gerek yok']]
                     await update.message.reply_text(
-                        "📧 *Bu belgeleri e-posta ile göndermek ister misiniz?*\n\n"
-                        f"Alıcı: {context.user_data.get('email', 'Bilinmiyor')}",
+                        "📧 *Bu belgeleri e-posta ile göndermek ister misiniz?*",
                         reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True),
                         parse_mode='Markdown'
                     )
@@ -724,51 +723,69 @@ class OfferBot:
         choice = update.message.text.strip().lower()
         
         if 'evet' in choice or 'gönder' in choice:
-            # E-posta gönder
+            # E-posta adresini sor
             await update.message.reply_text(
-                "📧 E-posta gönderiliyor...",
-                reply_markup=ReplyKeyboardRemove()
+                "📧 *Belgeleri göndermek istediğiniz e-posta adresini yazın:*\n\n"
+                "Örnek: musteri@firma.com",
+                reply_markup=ReplyKeyboardRemove(),
+                parse_mode='Markdown'
             )
-            
-            pdf_files = context.user_data.get('pdf_files', [])
-            customer_name = context.user_data.get('customer_name', 'Müşteri')
-            to_email = context.user_data.get('email', '')
-            
-            if not to_email:
-                await update.message.reply_text("❌ E-posta adresi bulunamadı!")
-                # PDF'leri temizle
-                for pdf_file in pdf_files:
-                    Path(pdf_file).unlink(missing_ok=True)
-                return ConversationHandler.END
-            
-            # E-posta gönder
-            success = self.email_sender.send_offer_email(
-                to_email=to_email,
-                customer_name=customer_name,
-                pdf_files=pdf_files
-            )
-            
-            if success:
-                await update.message.reply_text(
-                    f"✅ *E-posta başarıyla gönderildi!*\n\n"
-                    f"📧 Alıcı: {to_email}\n"
-                    f"📎 {len(pdf_files)} belge eklendi",
-                    parse_mode='Markdown'
-                )
-            else:
-                await update.message.reply_text(
-                    "❌ E-posta gönderilemedi!\n\n"
-                    "Belgeler Telegram'da size iletildi.",
-                    parse_mode='Markdown'
-                )
+            return ASK_EMAIL_FOR_SENDING
         else:
             await update.message.reply_text(
                 "👌 Tamam, e-posta gönderilmedi.",
                 reply_markup=ReplyKeyboardRemove()
             )
+            
+            # PDF'leri temizle
+            pdf_files = context.user_data.get('pdf_files', [])
+            for pdf_file in pdf_files:
+                Path(pdf_file).unlink(missing_ok=True)
+            
+            return ConversationHandler.END
+    
+    async def send_email_to_address(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Belgeleri girilen e-posta adresine gönder"""
+        to_email = update.message.text.strip()
+        
+        # E-posta formatı kontrolü
+        if '@' not in to_email or '.' not in to_email:
+            await update.message.reply_text(
+                "❌ Geçersiz e-posta adresi!\n\n"
+                "Lütfen geçerli bir e-posta adresi girin (örn: musteri@firma.com):"
+            )
+            return ASK_EMAIL_FOR_SENDING
+        
+        await update.message.reply_text(
+            f"📧 E-posta gönderiliyor: {to_email}...",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        
+        pdf_files = context.user_data.get('pdf_files', [])
+        customer_name = context.user_data.get('customer_name', 'Müşteri')
+        
+        # E-posta gönder
+        success = self.email_sender.send_offer_email(
+            to_email=to_email,
+            customer_name=customer_name,
+            pdf_files=pdf_files
+        )
+        
+        if success:
+            await update.message.reply_text(
+                f"✅ *E-posta başarıyla gönderildi!*\n\n"
+                f"📧 Alıcı: {to_email}\n"
+                f"📎 {len(pdf_files)} belge eklendi",
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text(
+                "❌ E-posta gönderilemedi!\n\n"
+                "Belgeler Telegram'da size iletildi.",
+                parse_mode='Markdown'
+            )
         
         # PDF'leri temizle
-        pdf_files = context.user_data.get('pdf_files', [])
         for pdf_file in pdf_files:
             Path(pdf_file).unlink(missing_ok=True)
         
@@ -812,6 +829,7 @@ def main():
             ASK_PROJECT_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.receive_project_type)],
             ASK_CONTRACT_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.receive_contract_amount)],
             ASK_SEND_EMAIL: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.ask_send_email)],
+            ASK_EMAIL_FOR_SENDING: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.send_email_to_address)],
         },
         fallbacks=[CommandHandler('iptal', bot.cancel)],
     )

@@ -7,6 +7,9 @@ from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 from pathlib import Path
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class EmailSender:
@@ -22,15 +25,15 @@ class EmailSender:
         self.gmail_password = gmail_password or os.getenv('GMAIL_APP_PASSWORD')
         
         # Debug: Environment variables'ı kontrol et
-        print(f'🔍 DEBUG - GMAIL_USER: {self.gmail_user}')
-        print(f'🔍 DEBUG - GMAIL_APP_PASSWORD: {"*" * len(self.gmail_password) if self.gmail_password else "None"}')
+        logger.info(f'🔍 DEBUG - GMAIL_USER: {self.gmail_user}')
+        logger.info(f'🔍 DEBUG - GMAIL_APP_PASSWORD: {"*" * len(self.gmail_password) if self.gmail_password else "None"}')
         
         if not self.gmail_user or not self.gmail_password:
-            print('⚠️ Gmail bilgileri eksik! GMAIL_USER ve GMAIL_APP_PASSWORD environment variable\'larını ayarlayın.')
+            logger.warning('⚠️ Gmail bilgileri eksik! GMAIL_USER ve GMAIL_APP_PASSWORD environment variable\'larını ayarlayın.')
             self.enabled = False
         else:
             self.enabled = True
-            print(f'✅ Email gönderimi aktif: {self.gmail_user}')
+            logger.info(f'✅ Email gönderimi aktif: {self.gmail_user}')
     
     def send_offer_email(self, to_email, customer_name, pdf_files):
         """

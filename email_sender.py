@@ -34,7 +34,7 @@ class EmailSender:
             self.enabled = True
             logger.info(f'✅ Email gönderimi aktif (SendGrid): {self.from_email}')
     
-    def send_offer_email(self, to_email, customer_name, pdf_files):
+    def send_offer_email(self, to_email, customer_name, pdf_files, contact_person=None):
         """
         Teklif belgelerini e-posta ile gönder
         
@@ -42,6 +42,7 @@ class EmailSender:
             to_email: Alıcı e-posta adresi
             customer_name: Müşteri adı
             pdf_files: PDF dosya yolları listesi
+            contact_person: Yetkili kişi adı (opsiyonel)
             
         Returns:
             bool: Başarılı ise True
@@ -53,41 +54,47 @@ class EmailSender:
         logger.info(f'📧 E-posta hazırlanıyor: {to_email}')
         
         try:
+            # Yetkili kişi ismini belirle
+            greeting_name = contact_person if contact_person else customer_name
+            
             # E-posta içeriği (HTML)
             html_content = f"""
             <html>
-                <body style="font-family: Arial, sans-serif;">
-                    <h2 style="color: #2c3e50;">Sayın {customer_name},</h2>
+                <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+                    <p style="margin-bottom: 15px;"><strong>Merhaba {greeting_name};</strong></p>
                     
-                    <p>Talep etmiş olduğunuz teklif belgeleri ekte yer almaktadır.</p>
+                    <p style="margin-bottom: 15px;">Öncelikle yeni iş birliğimiz her iki firma için de hayırlı olmasını diler, daha nice güzel işlere vesile olmasını dilerim.</p>
                     
-                    <h3 style="color: #34495e;">Ek Belgeler:</h3>
-                    <ul>
+                    <p style="margin-bottom: 15px;">Teşvik belgesi için evraklar ekte, ekteki evraklardan sadece <strong>Taahhütname noterden</strong> çıkacak diğerlerini <strong>kaşe imza</strong> yapmanız yeterli bunların yanında <strong>PTT'den KEP adresi açtırmanız</strong> ve <strong>e-imza almanız</strong> gerekiyor. Notere giderken yanınıza <strong>kaşenizi ve imza sirküsünü</strong> almayı unutmayın.</p>
+                    
+                    <h3 style="color: #34495e; margin-top: 25px; margin-bottom: 10px;">📎 Ek Belgeler:</h3>
+                    <ul style="margin-bottom: 20px;">
                         <li>✅ YTB Teklif Formu</li>
-                        <li>✅ Yetkilendirme Taahhütnamesi</li>
-                        <li>✅ Kullanıcı Yetkilendirme Formu</li>
-                        <li>✅ Sözleşme</li>
+                        <li>✅ Yetkilendirme Taahhütnamesi (Noter)</li>
+                        <li>✅ Kullanıcı Yetkilendirme Formu (Kaşe-İmza)</li>
+                        <li>✅ Sözleşme (Kaşe-İmza)</li>
                     </ul>
                     
-                    <p>Belgelerle ilgili herhangi bir sorunuz olursa lütfen bizimle iletişime geçiniz.</p>
+                    <p style="margin-bottom: 20px;">Her türlü soru ve bilgi için mail ile iletişime geçebilirsiniz.</p>
                     
-                    <br>
-                    <p style="color: #7f8c8d; font-size: 12px;">
-                        Bu e-posta otomatik olarak oluşturulmuştur.<br>
-                        <strong>ARSLANLI DANIŞMANLIK</strong><br>
-                        Hatice Arslan
-                    </p>
+                    <p style="margin-top: 30px; margin-bottom: 5px;"><strong>Saygılarımla;</strong></p>
+                    <p style="color: #2c3e50; margin: 0;"><strong>Arslanlı Danışmanlık Ekibi</strong></p>
                 </body>
             </html>
             """
             
             # E-posta mesajı oluştur
+            from sendgrid.helpers.mail import Email, To
+            
             message = Mail(
-                from_email=self.from_email,
-                to_emails=to_email,
-                subject=f'Teklif Belgeleriniz - {customer_name}',
+                from_email=Email(self.from_email, 'ARSLANLI DANIŞMANLIK - Hatice Arslan'),
+                to_emails=To(to_email),
+                subject='Yatırım Teşvik Belgeleri Hk.',
                 html_content=html_content
             )
+            
+            # Reply-To ekle (cevaplarda bu adrese gitsin)
+            message.reply_to = Email(self.from_email, 'ARSLANLI DANIŞMANLIK')
             
             # PDF dosyalarını ekle
             for pdf_path in pdf_files:

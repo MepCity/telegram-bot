@@ -763,12 +763,14 @@ class OfferBot:
         
         pdf_files = context.user_data.get('pdf_files', [])
         customer_name = context.user_data.get('customer_name', 'Müşteri')
+        contact_person = context.user_data.get('contact_person', '')
         
         # E-posta gönder
         success = self.email_sender.send_offer_email(
             to_email=to_email,
             customer_name=customer_name,
-            pdf_files=pdf_files
+            pdf_files=pdf_files,
+            contact_person=contact_person
         )
         
         if success:

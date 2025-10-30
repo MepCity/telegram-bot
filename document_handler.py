@@ -50,24 +50,24 @@ class DocumentHandler:
             
             doc = Document(template_path)
             
-            # ... işaretlerini bul ve değiştir
-            # İlk ... → Vergi numarası
-            # İkinci ... → Firma unvanı
+            # . . . işaretlerini bul ve değiştir (nokta boşluk nokta boşluk nokta)
+            # İlk . . . → Vergi numarası
+            # İkinci . . . → Firma unvanı
             replacements_made = 0
             
             for paragraph in doc.paragraphs:
                 original_text = paragraph.text
                 
-                # Paragraftaki tüm ... işaretlerini kontrol et
-                while '...' in paragraph.text and replacements_made < 2:
-                    # İlk ... → vergi numarası
+                # Paragraftaki tüm . . . işaretlerini kontrol et
+                while '. . .' in paragraph.text and replacements_made < 2:
+                    # İlk . . . → vergi numarası
                     if replacements_made == 0 and tax_data.get('tax_number'):
-                        paragraph.text = paragraph.text.replace('...', tax_data['tax_number'], 1)
+                        paragraph.text = paragraph.text.replace('. . .', tax_data['tax_number'], 1)
                         replacements_made = 1
                         print(f"✓ Vergi numarası yerleştirildi: {tax_data['tax_number']}")
-                    # İkinci ... → firma unvanı
+                    # İkinci . . . → firma unvanı
                     elif replacements_made == 1 and tax_data.get('company_name'):
-                        paragraph.text = paragraph.text.replace('...', tax_data['company_name'], 1)
+                        paragraph.text = paragraph.text.replace('. . .', tax_data['company_name'], 1)
                         replacements_made = 2
                         print(f"✓ Firma unvanı yerleştirildi: {tax_data['company_name']}")
                     else:

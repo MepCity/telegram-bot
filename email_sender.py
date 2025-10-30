@@ -91,7 +91,7 @@ class EmailSender:
             # PDF dosyalarını ekle
             for pdf_path in pdf_files:
                 if not Path(pdf_path).exists():
-                    print(f'⚠️ Dosya bulunamadı: {pdf_path}')
+                    logger.warning(f'⚠️ Dosya bulunamadı: {pdf_path}')
                     continue
                 
                 with open(pdf_path, 'rb') as f:
@@ -99,22 +99,36 @@ class EmailSender:
                     pdf_attachment.add_header('Content-Disposition', 'attachment', 
                                             filename=Path(pdf_path).name)
                     msg.attach(pdf_attachment)
-                    print(f'📎 Eklendi: {Path(pdf_path).name}')
+                    logger.info(f'📎 Eklendi: {Path(pdf_path).name}')
             
             # Gmail SMTP ile gönder
-            print(f'📧 E-posta gönderiliyor: {to_email}')
+            logger.info(f'📧 E-posta gönderiliyor: {to_email}')
             
-            server = smtplib.SMTP('smtp.gmail.com', 587)
-            server.starttls()
-            server.login(self.gmail_user, self.gmail_password)
+            # Port 587 (TLS) yerine Port 465 (SSL) dene
+            import ssl
+            context = ssl.create_default_context()
+            
+            try:
+                # Önce Port 465 (SSL) ile dene
+                logger.info('📡 Port 465 (SSL) ile bağlanılıyor...')
+                server = smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context)
+                server.login(self.gmail_user, self.gmail_password)
+            except Exception as e:
+                # Port 465 başarısız olursa Port 587 (TLS) dene
+                logger.warning(f'⚠️ Port 465 başarısız: {e}')
+                logger.info('📡 Port 587 (TLS) ile bağlanılıyor...')
+                server = smtplib.SMTP('smtp.gmail.com', 587, timeout=30)
+                server.starttls(context=context)
+                server.login(self.gmail_user, self.gmail_password)
+            
             server.send_message(msg)
             server.quit()
             
-            print(f'✅ E-posta başarıyla gönderildi: {to_email}')
+            logger.info(f'✅ E-posta başarıyla gönderildi: {to_email}')
             return True
             
         except Exception as e:
-            print(f'❌ E-posta gönderme hatası: {e}')
+            logger.error(f'❌ E-posta gönderme hatası: {e}')
             import traceback
             traceback.print_exc()
             return False

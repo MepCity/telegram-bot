@@ -397,8 +397,14 @@ class OfferBot:
         email = update.message.text.strip()
         context.user_data['email'] = email
         await update.message.reply_text(f"✅ E-posta: {email}")
-        await update.message.reply_text(config.MESSAGES['ask_service_name'], parse_mode='Markdown')
-        return ASK_SERVICE_NAME
+        
+        # YTB seçildiyse hizmet sorularına geç, PROJE seçildiyse direkt proje türüne geç
+        if context.user_data.get('initial_choice') == 'YTB':
+            await update.message.reply_text(config.MESSAGES['ask_service_name'], parse_mode='Markdown')
+            return ASK_SERVICE_NAME
+        else:
+            # PROJE seçildiyse direkt proje türünü sor
+            return await self.ask_project_type(update, context)
     
     async def receive_service_name(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['current_service'] = {'name': update.message.text.strip()}
@@ -499,8 +505,13 @@ class OfferBot:
         else:
             # Teslim tarihi istemiyorsa boş bırak
             context.user_data['delivery_date'] = ''
-            # Sözleşme sorusuna geç
-            return await self.ask_project_type(update, context)
+            # YTB ise direkt belge oluştur, PROJE ise sözleşme bilgilerini sor
+            if context.user_data.get('initial_choice') == 'PROJE':
+                return await self.ask_project_type(update, context)
+            else:
+                # YTB seçilmişse direkt belge oluşturmaya geç
+                await update.message.reply_text(config.MESSAGES['processing'], reply_markup=ReplyKeyboardRemove(), parse_mode='Markdown')
+                return await self.generate_documents(update, context)
     
     async def receive_delivery_date(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Kullanıcının yazdığı teslim tarihini kaydet"""
@@ -508,8 +519,13 @@ class OfferBot:
         context.user_data['delivery_date'] = delivery_date
         await update.message.reply_text(f"✅ Planlanan teslim tarihi: {delivery_date}")
         
-        # Sözleşme sorusuna geç
-        return await self.ask_project_type(update, context)
+        # YTB ise direkt belge oluştur, PROJE ise sözleşme bilgilerini sor
+        if context.user_data.get('initial_choice') == 'PROJE':
+            return await self.ask_project_type(update, context)
+        else:
+            # YTB seçilmişse direkt belge oluşturmaya geç
+            await update.message.reply_text(config.MESSAGES['processing'], reply_markup=ReplyKeyboardRemove(), parse_mode='Markdown')
+            return await self.generate_documents(update, context)
     
     async def ask_project_type(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Sözleşme için proje türünü sor"""
@@ -553,12 +569,12 @@ class OfferBot:
                 f"✅ Sözleşme bedeli kaydedildi:\n"
                 f"• Tutar: {ucret_bilgisi['tutar']}\n"
                 f"• Açıklama: {ucret_bilgisi['aciklama']}\n\n"
-                "📄 Sözleşme hazırlanıyor...",
+                "📄 Belgeler hazırlanıyor...",
                 parse_mode='Markdown'
             )
             
-            # Sözleşmeyi oluştur
-            return await self.generate_offer(update, context)
+            # Belgeleri oluştur
+            return await self.generate_documents(update, context)
             
         except Exception as e:
             await update.message.reply_text(
@@ -649,8 +665,8 @@ class OfferBot:
         raise ValueError("Geçersiz format")
 
     
-    async def generate_offer(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Teklif oluşturma işlemini gerçekleştir"""
+    async def generate_documents(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Belge oluşturma işlemini gerçekleştir (YTB veya Proje)"""
         try:
             # Müşteri verileri
             customer_data = {

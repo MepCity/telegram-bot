@@ -24,11 +24,11 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Conversation states - Manuel giriş, sözleşme ve email için state'ler
-(ASK_TAX_PDF, ASK_TAX_NUMBER, ASK_CONTACT_PERSON, ASK_OFFER_DATE, ASK_MANUAL_DATE, 
+(ASK_INITIAL_CHOICE, ASK_TAX_PDF, ASK_TAX_NUMBER, ASK_CONTACT_PERSON, ASK_OFFER_DATE, ASK_MANUAL_DATE, 
  ASK_EMAIL, ASK_SERVICE_NAME, ASK_QUANTITY, ASK_UNIT_PRICE, ASK_ADD_MORE,
  ASK_MANUAL_ENTRY, ASK_MANUAL_COMPANY, ASK_MANUAL_TAX_OFFICE, ASK_MANUAL_TAX_NUMBER, ASK_MANUAL_ADDRESS,
  ASK_NOTES_CHOICE, ASK_NOTES_TEXT, ASK_PROJECT_TYPE, ASK_CONTRACT_AMOUNT, ASK_SEND_EMAIL, ASK_EMAIL_FOR_SENDING,
- ASK_DELIVERY_DATE_CHOICE, ASK_DELIVERY_DATE) = range(23)
+ ASK_DELIVERY_DATE_CHOICE, ASK_DELIVERY_DATE) = range(24)
 
 class OfferBot:
     def __init__(self):
@@ -59,9 +59,26 @@ class OfferBot:
         return ConversationHandler.END
     
     async def new_offer(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        # Başlangıç seçim ekranı: Kullanıcıdan işlem türünü sor
         context.user_data.clear()
         context.user_data['services'] = []
-        await update.message.reply_text(config.MESSAGES['ask_tax_pdf'], parse_mode='Markdown')
+        keyboard = [['YTB Teklifi', 'Proje']]
+        await update.message.reply_text(
+            "Hangi işlemi yapmak istiyorsunuz?\n\n• YTB Teklifi: Yatırım Teşvik Belgesi teklif dosyalarını oluşturur\n• Proje: Sadece sözleşme belgesini oluşturur",
+            reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+        )
+        return ASK_INITIAL_CHOICE
+
+    async def receive_initial_choice(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Kullanıcının başlangıç seçiminden sonra akışı başlat"""
+        choice = update.message.text.strip().lower()
+        if choice in ['ytb teklif', 'ytb teklifi', 'ytb']:
+            context.user_data['initial_choice'] = 'YTB'
+        else:
+            context.user_data['initial_choice'] = 'PROJE'
+
+        # Ardından normal veri toplama akışına devam et (vergi levhası sor)
+        await update.message.reply_text(config.MESSAGES['ask_tax_pdf'], reply_markup=ReplyKeyboardRemove(), parse_mode='Markdown')
         return ASK_TAX_PDF
     
     async def receive_tax_pdf(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -661,52 +678,74 @@ class OfferBot:
                 'delivery_date': context.user_data.get('delivery_date', '')  # Planlanan teslim tarihi
             }
             
-            # 1. YTB Teklif Excel'i oluştur
-            await update.message.reply_text("📄 1/4 - Teklif formu hazırlanıyor...")
-            excel_path = self.excel_handler.create_offer(customer_data, services, offer_info)
-            subtotal = sum(s['quantity'] * s['unit_price'] for s in services)
-            kdv = subtotal * config.KDV_RATE
-            total = subtotal + kdv
-            
-            # Excel'i PDF'e çevir
-            pdf_path = self.pdf_converter.excel_to_pdf(excel_path)
             pdf_files = []
-            
-            if pdf_path and Path(pdf_path).exists():
-                pdf_files.append(pdf_path)
-            
-            # 2. Yetkilendirme Taahhütnamesi oluştur
             tax_data = context.user_data.get('tax_data', {})
             email = context.user_data.get('email', '')
-            
-            if tax_data and email:
-                await update.message.reply_text("📄 2/4 - Yetkilendirme Taahhütnamesi hazırlanıyor...")
-                word_file = self.document_handler.fill_yetkilendirme_taahhutnamesi(tax_data)
-                if word_file:
-                    word_pdf = self.document_handler.convert_to_pdf(word_file)
-                    if word_pdf and Path(word_pdf).exists():
-                        pdf_files.append(word_pdf)
-                
-                # 3. Kullanıcı Yetkilendirme Formu oluştur
-                await update.message.reply_text("📄 3/4 - Kullanıcı Yetkilendirme Formu hazırlanıyor...")
-                excel_form = self.document_handler.fill_kullanici_yetkilendirme_formu(tax_data, email)
-                if excel_form:
-                    excel_form_pdf = self.document_handler.convert_to_pdf(excel_form)
-                    if excel_form_pdf and Path(excel_form_pdf).exists():
-                        pdf_files.append(excel_form_pdf)
-                
-                # 4. Sözleşme oluştur (proje türü varsa)
+
+            # Eğer kullanıcı YTB Teklifi seçtiyse YTB ile ilgili 3 belgeyi oluştur
+            if context.user_data.get('initial_choice') == 'YTB':
+                # 1. YTB Teklif Excel'i oluştur
+                await update.message.reply_text("📄 1/4 - Teklif formu hazırlanıyor...")
+                excel_path = self.excel_handler.create_offer(customer_data, services, offer_info)
+                subtotal = sum(s['quantity'] * s['unit_price'] for s in services)
+                kdv = subtotal * config.KDV_RATE
+                total = subtotal + kdv
+
+                # Excel'i PDF'e çevir
+                pdf_path = self.pdf_converter.excel_to_pdf(excel_path)
+                if pdf_path and Path(pdf_path).exists():
+                    pdf_files.append(pdf_path)
+
+                # 2. Yetkilendirme Taahhütnamesi oluştur
+                if tax_data and email:
+                    await update.message.reply_text("📄 2/4 - Yetkilendirme Taahhütnamesi hazırlanıyor...")
+                    word_file = self.document_handler.fill_yetkilendirme_taahhutnamesi(tax_data)
+                    if word_file:
+                        word_pdf = self.document_handler.convert_to_pdf(word_file)
+                        if word_pdf and Path(word_pdf).exists():
+                            pdf_files.append(word_pdf)
+
+                    # 3. Kullanıcı Yetkilendirme Formu oluştur
+                    await update.message.reply_text("📄 3/4 - Kullanıcı Yetkilendirme Formu hazırlanıyor...")
+                    excel_form = self.document_handler.fill_kullanici_yetkilendirme_formu(tax_data, email)
+                    if excel_form:
+                        excel_form_pdf = self.document_handler.convert_to_pdf(excel_form)
+                        if excel_form_pdf and Path(excel_form_pdf).exists():
+                            pdf_files.append(excel_form_pdf)
+
+            # Eğer kullanıcı Proje seçtiyse sözleşme ve KOSGEB Vekaletname oluştur
+            elif context.user_data.get('initial_choice') == 'PROJE':
                 proje_turu = context.user_data.get('proje_turu')
                 ucret_bilgisi = context.user_data.get('ucret_bilgisi')
-                
-                if proje_turu and ucret_bilgisi:
-                    await update.message.reply_text("📄 4/4 - Sözleşme hazırlanıyor...")
+                if proje_turu and ucret_bilgisi and tax_data:
+                    # 1. Sözleşme
+                    await update.message.reply_text("📄 1/2 - Sözleşme hazırlanıyor...")
                     sozlesme_file = self.document_handler.fill_sozlesme(tax_data, proje_turu, ucret_bilgisi)
                     if sozlesme_file:
                         sozlesme_pdf = self.document_handler.convert_to_pdf(sozlesme_file)
                         if sozlesme_pdf and Path(sozlesme_pdf).exists():
                             pdf_files.append(sozlesme_pdf)
+                    
+                    # 2. KOSGEB Vekaletname
+                    await update.message.reply_text("📄 2/2 - KOSGEB Vekaletname hazırlanıyor...")
+                    # Email bilgisini tax_data'ya ekle
+                    tax_data_with_email = tax_data.copy()
+                    tax_data_with_email['email'] = email
+                    
+                    kosgeb_file = self.document_handler.fill_kosgeb_vekaletname(tax_data_with_email)
+                    if kosgeb_file:
+                        kosgeb_pdf = self.document_handler.convert_to_pdf(kosgeb_file)
+                        if kosgeb_pdf and Path(kosgeb_pdf).exists():
+                            pdf_files.append(kosgeb_pdf)
             
+            # Hesaplamaları garanti altına al
+            if context.user_data.get('initial_choice') == 'YTB':
+                subtotal = sum(s['quantity'] * s['unit_price'] for s in services)
+            else:
+                subtotal = 0
+            kdv = subtotal * config.KDV_RATE
+            total = subtotal + kdv
+
             # Tüm PDF'leri gönder
             success_msg = config.MESSAGES['success'].format(subtotal=subtotal, kdv=kdv, total=total)
             
@@ -847,6 +886,7 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('yeni', bot.new_offer)],
         states={
+            ASK_INITIAL_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot.receive_initial_choice)],
             ASK_TAX_PDF: [
                 MessageHandler(filters.Document.PDF, bot.receive_tax_pdf),
                 MessageHandler(filters.PHOTO, bot.receive_tax_photo)

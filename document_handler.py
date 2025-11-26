@@ -50,6 +50,23 @@ class DocumentHandler:
             
             doc = Document(template_path)
             
+            # Güncel tarihi al (gün/ay/yıl formatında)
+            current_date = datetime.now().strftime('%d/%m/%Y')
+            
+            # Belgedeki tarihleri güncelle
+            # 1. Sağ üst köşedeki tarih (genellikle ilk paragraf)
+            # 2. "TAAHHÜDÜN BAŞLANGIÇ TARİHİ" satırındaki tarih
+            for paragraph in doc.paragraphs:
+                text = paragraph.text
+                # Tarih formatını ara ve değiştir (dd/mm/yyyy veya dd.mm.yyyy)
+                import re
+                # dd/mm/yyyy formatını bul
+                if re.search(r'\d{2}/\d{2}/\d{4}', text):
+                    # Sadece tarihi değiştir, diğer metni koru
+                    new_text = re.sub(r'\d{2}/\d{2}/\d{4}', current_date, text)
+                    paragraph.text = new_text
+                    print(f"✓ Tarih güncellendi: {text.strip()} → {new_text.strip()}")
+            
             # . . . işaretlerini bul ve değiştir (nokta boşluk nokta boşluk nokta)
             # İlk . . . → Vergi numarası
             # İkinci . . . → Firma unvanı
@@ -335,6 +352,154 @@ class DocumentHandler:
             
         except Exception as e:
             print(f'❌ Sözleşme doldurma hatası: {e}')
+            import traceback
+            traceback.print_exc()
+            return None
+    
+    def fill_kosgeb_vekaletname(self, tax_data, output_path=None):
+        """
+        KOSGEB Vekaletname belgesini doldurur.
+        
+        Args:
+            tax_data: PDF'den çıkarılan vergi bilgileri (company_name, tax_number, address, email)
+            output_path: Çıktı dosyasının kaydedileceği yol (opsiyonel)
+            
+        Returns:
+            str: Oluşturulan dosyanın yolu
+        """
+        try:
+            # Şablon dosyasını aç
+            template_path = os.path.join(self.template_dir, 'kosgeb_vekaletname.docx')
+            
+            if not os.path.exists(template_path):
+                raise FileNotFoundError(f"Şablon bulunamadı: {template_path}")
+            
+            doc = Document(template_path)
+            
+            # 10 yıl sonraki tarihi hesapla
+            from datetime import timedelta
+            future_date = datetime.now() + timedelta(days=365*10)
+            
+            # Türkçe ay isimleri
+            turkish_months = {
+                1: 'ocak', 2: 'şubat', 3: 'mart', 4: 'nisan',
+                5: 'mayıs', 6: 'haziran', 7: 'temmuz', 8: 'ağustos',
+                9: 'eylül', 10: 'ekim', 11: 'kasım', 12: 'aralık'
+            }
+            
+            # Türkçe gün isimleri
+            turkish_days = {
+                0: 'Pazartesi', 1: 'Salı', 2: 'Çarşamba', 3: 'Perşembe',
+                4: 'Cuma', 5: 'Cumartesi', 6: 'Pazar'
+            }
+            
+            # Sayıyı yazıya çevir (basit versiyon 1-31 için)
+            ones = ['', 'bir', 'iki', 'üç', 'dört', 'beş', 'altı', 'yedi', 'sekiz', 'dokuz']
+            tens = ['', 'on', 'yirmi', 'otuz']
+            
+            def number_to_turkish(n):
+                if n < 10:
+                    return ones[n]
+                elif n < 40:
+                    tens_digit = n // 10
+                    ones_digit = n % 10
+                    return tens[tens_digit] + ones[ones_digit]
+                return str(n)
+            
+            # Yılı yazıya çevir
+            year = future_date.year
+            thousands = year // 1000
+            hundreds = (year % 1000) // 100
+            tens_part = (year % 100) // 10
+            ones_part = year % 10
+            
+            year_text = ''
+            if thousands == 2:
+                year_text = 'ikibin'
+            if hundreds > 0:
+                year_text += ones[hundreds] + 'yüz'
+            if tens_part > 0:
+                year_text += tens[tens_part]
+            if ones_part > 0:
+                year_text += ones[ones_part]
+            
+            # Formatlanmış tarih oluştur
+            day_num = future_date.day
+            month_num = future_date.month
+            day_name = turkish_days[future_date.weekday()]
+            
+            date_str = f"{future_date.strftime('%d.%m.%Y')} ({number_to_turkish(day_num)} {turkish_months[month_num]} {year_text})  {day_name}"
+            
+            print(f"✓ Gelecek tarih: {date_str}")
+            
+            # Vergi levhasından alınan bilgiler
+            company_name = tax_data.get('company_name', '')
+            tax_number = tax_data.get('tax_number', '')
+            address = tax_data.get('address', '')
+            email = tax_data.get('email', '')  # Bot'tan alınacak
+            
+            # Belgedeki tarihleri ve alanları doldur
+            for paragraph in doc.paragraphs:
+                text = paragraph.text
+                
+                # 1. Tarihleri güncelle (31.12.2030 formatı)
+                import re
+                if re.search(r'31\.12\.2030 \(otuzbir aralık ikibinotuz\)\s+\w+', text):
+                    paragraph.text = re.sub(
+                        r'31\.12\.2030 \(otuzbir aralık ikibinotuz\)\s+\w+',
+                        date_str,
+                        text
+                    )
+                    print(f"✓ Tarih güncellendi")
+                
+                # 2. İlk "… vergi numaralı" → Vergi numarası ekle
+                if '… vergi numaralı' in text and tax_number:
+                    paragraph.text = text.replace('… vergi numaralı', f'{tax_number} vergi numaralı', 1)
+                    print(f"✓ Vergi numarası yerleştirildi: {tax_number}")
+                
+                # 3. "… şirket adına" → Şirket adı ekle
+                if '… şirket adına' in text and company_name:
+                    paragraph.text = paragraph.text.replace('… şirket adına', f'{company_name} şirket adına', 1)
+                    print(f"✓ Şirket adı yerleştirildi: {company_name}")
+                
+                # 4. Tek başına "…" olan paragrafları doldur
+                if text.strip() == '…':
+                    # Bir önceki paragrafın içeriğine göre karar ver
+                    # Bu basit implementasyon - şirket adını yerleştir
+                    if company_name:
+                        paragraph.text = company_name
+                        print(f"✓ Şirket adı (VEKİL EDEN) yerleştirildi")
+                
+                # 5. "Vergi Numarası: …"
+                if text.startswith('Vergi Numarası: …') and tax_number:
+                    paragraph.text = f'Vergi Numarası: {tax_number}'
+                    print(f"✓ Vergi numarası alanı dolduruldu")
+                
+                # 6. "Adresi: …"
+                if text.startswith('Adresi: …') and address:
+                    paragraph.text = f'Adresi: {address}'
+                    print(f"✓ Adres alanı dolduruldu")
+                
+                # 7. "Elektronik Posta Adresi: …"
+                if text.startswith('Elektronik Posta Adresi: …') and email:
+                    paragraph.text = f'Elektronik Posta Adresi: {email}'
+                    print(f"✓ E-posta alanı dolduruldu")
+            
+            # Çıktı dosyasını kaydet
+            if not output_path:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                safe_company = company_name[:30].replace('/', '_').replace('\\', '_') if company_name else 'firma'
+                filename = f'KOSGEB_Vekaletname_{safe_company}_{timestamp}.docx'
+                output_path = os.path.join(self.output_dir, filename)
+            
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            doc.save(output_path)
+            
+            print(f'✅ KOSGEB Vekaletname oluşturuldu: {output_path}')
+            return output_path
+            
+        except Exception as e:
+            print(f'❌ KOSGEB Vekaletname doldurma hatası: {e}')
             import traceback
             traceback.print_exc()
             return None
